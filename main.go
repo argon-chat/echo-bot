@@ -10,17 +10,15 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"gopkg.in/yaml.v3"
 )
 
 type Config struct {
-	Token          string   `yaml:"token"`
-	APIBase        string   `yaml:"api_base"`
-	IngressURL     string   `yaml:"ingress_url"`
-	Variants       []string `yaml:"variants"`
-	BackgroundFile string   `yaml:"background_file"`
-	LogLevel       string   `yaml:"log_level"`
+	Token          string   `json:"token"`
+	APIBase        string   `json:"api_base"`
+	IngressURL     string   `json:"ingress_url"`
+	Variants       []string `json:"variants"`
+	BackgroundFile string   `json:"background_file"`
+	LogLevel       string   `json:"log_level"`
 }
 
 type EchoVariant struct {
@@ -155,7 +153,7 @@ func loadConfig(path string) Config {
 	if err != nil {
 		return cfg
 	}
-	_ = yaml.Unmarshal(data, &cfg)
+	_ = json.Unmarshal(data, &cfg)
 	return cfg
 }
 
