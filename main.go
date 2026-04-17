@@ -158,7 +158,7 @@ func loadConfig(path string) Config {
 }
 
 func main() {
-	cfg := loadConfig(env("CONFIG_FILE", "config.yaml"))
+	cfg := loadConfig(env("CONFIG_FILE", "config.json"))
 
 	// env vars take priority
 	if v := os.Getenv("BOT_TOKEN"); v != "" {

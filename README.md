@@ -22,14 +22,14 @@ The bot uses a single duplex WebSocket to both publish and subscribe to audio.
 ## Quick start
 
 ```bash
-cp config.yaml config.yaml   # edit token, api_base, ingress_url
+cp config.json config.json   # edit token, api_base, ingress_url
 export BOT_TOKEN="your-bot-token"
 go run .
 ```
 
 ## Configuration
 
-Edit `config.yaml` or use environment variables:
+Edit `config.json` or use environment variables:
 
 | Config key | Env var | Default | Description |
 |---|---|---|---|

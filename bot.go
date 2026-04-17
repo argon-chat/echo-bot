@@ -12,6 +12,8 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -54,10 +56,12 @@ type CallEndedEvent struct {
 }
 
 type Bot struct {
-	cfg       Config
-	client    *http.Client
-	variants  []EchoVariant
-	bgPackets []OpusPacket
+	cfg         Config
+	client      *http.Client
+	variants    []EchoVariant
+	bgPackets   []OpusPacket
+	activeCalls sync.Map     // callID → context.CancelFunc
+	callCount   atomic.Int64 // number of active call handlers
 }
 
 func NewBot(cfg Config) *Bot {
@@ -227,13 +231,23 @@ func (b *Bot) handleEvent(ctx context.Context, eventType, data string) {
 			return
 		}
 		slog.Info("incoming call", "callId", ev.CallID, "from", ev.FromUserID)
-		go b.handleCall(ctx, ev)
+
+		callCtx, callCancel := context.WithCancel(ctx)
+		b.activeCalls.Store(ev.CallID, callCancel)
+		go func() {
+			defer callCancel()
+			defer b.activeCalls.Delete(ev.CallID)
+			b.handleCall(callCtx, ev)
+		}()
 
 	case "callEnded":
 		var ev CallEndedEvent
 		if err := json.Unmarshal([]byte(data), &ev); err != nil {
 			slog.Error("failed to parse callEnded", "error", err)
 			return
+		}
+		if cancel, ok := b.activeCalls.LoadAndDelete(ev.CallID); ok {
+			cancel.(context.CancelFunc)()
 		}
 		slog.Info("call ended", "callId", ev.CallID)
 
@@ -243,7 +257,16 @@ func (b *Bot) handleEvent(ctx context.Context, eventType, data string) {
 }
 
 func (b *Bot) handleCall(ctx context.Context, ev CallIncomingEvent) {
-	callLog := slog.With("callId", ev.CallID, "from", ev.FromUserID)
+	n := b.callCount.Add(1)
+	defer b.callCount.Add(-1)
+
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("panic in handleCall", "callId", ev.CallID, "panic", r)
+		}
+	}()
+
+	callLog := slog.With("callId", ev.CallID, "from", ev.FromUserID, "activeCalls", n)
 
 	v := b.variants[rand.Intn(len(b.variants))]
 	callLog.Info("selected variant", "variant", v.Name)

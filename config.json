@@ -1,0 +1,13 @@
+{
+  "api_base": "https://gateway.argon.zone",
+  "background_file": "background.opus",
+  "ingress_url": "ws://rts.argon.gl:12880",
+  "log_level": "debug",
+  "token": "",
+  "variants": [
+    "girl_echo_00",
+    "girl_echo_01",
+    "girl_echo_02",
+    "girl_echo_03"
+  ]
+}
