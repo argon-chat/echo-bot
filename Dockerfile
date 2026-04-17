@@ -12,6 +12,6 @@ RUN apk add --no-cache ca-certificates
 WORKDIR /app
 
 COPY --from=build /echo-bot .
-COPY *.opus *.json config.yaml ./
+COPY *.opus *.json config.json ./
 
 ENTRYPOINT ["./echo-bot"]
