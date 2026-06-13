@@ -12,6 +12,7 @@ RUN apk add --no-cache ca-certificates
 WORKDIR /app
 
 COPY --from=build /echo-bot .
-COPY *.opus *.json config.json ./
+COPY background.opus config.json ./
+COPY voices ./voices
 
 ENTRYPOINT ["./echo-bot"]

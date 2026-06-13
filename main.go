@@ -7,24 +7,37 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 )
 
 type Config struct {
-	Token          string   `json:"token"`
-	APIBase        string   `json:"api_base"`
-	IngressURL     string   `json:"ingress_url"`
-	Variants       []string `json:"variants"`
-	BackgroundFile string   `json:"background_file"`
-	LogLevel       string   `json:"log_level"`
-}
+	Token          string `json:"token"`
+	APIBase        string `json:"api_base"`
+	IngressURL     string `json:"ingress_url"`
+	BackgroundFile string `json:"background_file"`
+	LogLevel       string `json:"log_level"`
 
-type EchoVariant struct {
-	Name    string
-	Packets []OpusPacket
-	Markers ParsedMarkers
+	// FallbackLanguage is used when a caller's locale has no matching voice
+	// bucket (and for unknown/missing locales). Defaults to "en".
+	FallbackLanguage string `json:"fallback_language"`
+
+	// VoicesDir is the base directory holding per-language preset folders.
+	// Preset files are resolved as <VoicesDir>/<language>/<name>.{opus,json}.
+	// Defaults to "voices".
+	VoicesDir string `json:"voices_dir"`
+
+	// Voices maps a language tag (e.g. "ru", "en") to its voice presets.
+	// Each preset carries an optional rarity tier / weight controlling how
+	// often it is picked. This is the preferred configuration format.
+	Voices map[string][]VoicePreset `json:"voices"`
+
+	// Variants is the legacy flat list of preset names. Kept for backward
+	// compatibility: when Voices is empty, these are mapped to the fallback
+	// language bucket with common rarity.
+	Variants []string `json:"variants"`
 }
 
 type AudioMarkersJSON struct {
@@ -143,11 +156,12 @@ func loadMarkers(path string) (ParsedMarkers, error) {
 
 func loadConfig(path string) Config {
 	cfg := Config{
-		APIBase:        "https://gateway.argon.zone",
-		IngressURL:     "ws://localhost:12880",
-		Variants:       []string{"girl_echo_00", "girl_echo_01", "girl_echo_02", "girl_echo_03"},
-		BackgroundFile: "background.opus",
-		LogLevel:       "info",
+		APIBase:          "https://gateway.argon.zone",
+		IngressURL:       "ws://localhost:12880",
+		Variants:         []string{"girl_echo_00", "girl_echo_01", "girl_echo_02", "girl_echo_03"},
+		BackgroundFile:   "background.opus",
+		LogLevel:         "info",
+		FallbackLanguage: "en",
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -192,27 +206,35 @@ func main() {
 		os.Exit(1)
 	}
 
-	var variants []EchoVariant
-	for _, name := range cfg.Variants {
-		markers, err := loadMarkers(name + ".json")
-		if err != nil {
-			slog.Warn("skipping variant", "name", name, "error", err)
-			continue
+	voices := cfg.Voices
+	var pathFor func(lang, name string) string
+	if len(voices) > 0 {
+		// New layout: <voices_dir>/<language>/<name>.{opus,json}
+		voicesDir := cfg.VoicesDir
+		if voicesDir == "" {
+			voicesDir = "voices"
 		}
-		packets, err := LoadOpusPackets(name + ".opus")
-		if err != nil {
-			slog.Warn("skipping variant", "name", name, "error", err)
-			continue
+		pathFor = func(lang, name string) string { return filepath.Join(voicesDir, lang, name) }
+	} else {
+		// Back-compat: a flat variants list of files at the repo root, mapped
+		// to the fallback language bucket with common rarity.
+		lang := cfg.FallbackLanguage
+		if lang == "" {
+			lang = "en"
 		}
-		var dur time.Duration
-		for _, p := range packets {
-			dur += p.Duration
+		presets := make([]VoicePreset, 0, len(cfg.Variants))
+		for _, name := range cfg.Variants {
+			presets = append(presets, VoicePreset{Name: name})
 		}
-		slog.Info("variant loaded", "name", name, "packets", len(packets), "duration", dur.Round(time.Millisecond))
-		variants = append(variants, EchoVariant{Name: name, Packets: packets, Markers: markers})
+		voices = map[string][]VoicePreset{lang: presets}
+		pathFor = func(_, name string) string { return name }
+		slog.Warn("config has no 'voices'; mapping legacy 'variants' to fallback language",
+			"language", lang, "count", len(presets))
 	}
-	if len(variants) == 0 {
-		slog.Error("no echo variants loaded")
+
+	pool, err := LoadVoicePool(voices, cfg.FallbackLanguage, pathFor)
+	if err != nil {
+		slog.Error("failed to load voice pool", "error", err)
 		os.Exit(1)
 	}
 
@@ -221,7 +243,7 @@ func main() {
 		slog.Error("failed to load background audio", "error", err)
 		os.Exit(1)
 	}
-	slog.Info("audio loaded", "variants", len(variants), "bgPackets", len(bgPackets))
+	slog.Info("audio loaded", "languages", pool.Languages(), "bgPackets", len(bgPackets))
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
@@ -235,7 +257,7 @@ func main() {
 	}
 	slog.Info("authenticated", "botId", me.BotID, "username", me.Username)
 
-	bot.Run(ctx, variants, bgPackets)
+	bot.Run(ctx, pool, bgPackets)
 }
 
 func env(key, fallback string) string {

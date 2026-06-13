@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"math/rand"
 	"net/http"
 	"net/url"
 	"strings"
@@ -49,6 +48,10 @@ type AcceptCallResponse struct {
 type CallIncomingEvent struct {
 	CallID     string `json:"callId"`
 	FromUserID string `json:"fromUserId"`
+	// FromLocale is the caller's current app language as a BCP-47 tag
+	// (e.g. "en", "ru", "ja"). Added in Bot API 1.10.0; may be empty when
+	// unknown. Used to pick a voice in the caller's language.
+	FromLocale string `json:"fromLocale"`
 }
 
 type CallEndedEvent struct {
@@ -58,7 +61,7 @@ type CallEndedEvent struct {
 type Bot struct {
 	cfg         Config
 	client      *http.Client
-	variants    []EchoVariant
+	voices      *VoicePool
 	bgPackets   []OpusPacket
 	activeCalls sync.Map     // callID → context.CancelFunc
 	callCount   atomic.Int64 // number of active call handlers
@@ -141,8 +144,8 @@ func (b *Bot) AcceptCall(ctx context.Context, callID string) (*AcceptCallRespons
 }
 
 // Run connects to the SSE event stream and handles incoming calls.
-func (b *Bot) Run(ctx context.Context, variants []EchoVariant, bgPackets []OpusPacket) {
-	b.variants = variants
+func (b *Bot) Run(ctx context.Context, voices *VoicePool, bgPackets []OpusPacket) {
+	b.voices = voices
 	b.bgPackets = bgPackets
 	const allIntents = 16383
 
@@ -268,8 +271,16 @@ func (b *Bot) handleCall(ctx context.Context, ev CallIncomingEvent) {
 
 	callLog := slog.With("callId", ev.CallID, "from", ev.FromUserID, "activeCalls", n)
 
-	v := b.variants[rand.Intn(len(b.variants))]
-	callLog.Info("selected variant", "variant", v.Name)
+	voice, lang, rarity := b.voices.Pick(ev.FromLocale)
+	if voice == nil {
+		callLog.Error("no voice available for call")
+		return
+	}
+	callLog.Info("selected voice",
+		"voice", voice.Name,
+		"callerLocale", ev.FromLocale,
+		"language", lang,
+		"rarity", rarity)
 
 	resp, err := b.AcceptCall(ctx, ev.CallID)
 	if err != nil {
@@ -279,7 +290,7 @@ func (b *Bot) handleCall(ctx context.Context, ev CallIncomingEvent) {
 	callLog.Info("call accepted", "room", resp.RoomName, "caller", resp.CallerID)
 
 	audioBase := replaceHost(resp.AudioBaseUrl, b.cfg.IngressURL)
-	err = StreamDuplex(ctx, audioBase, resp.Token, resp.CallerID, v.Packets, v.Markers, b.bgPackets, callLog)
+	err = StreamDuplex(ctx, audioBase, resp.Token, resp.CallerID, voice.Packets, voice.Markers, b.bgPackets, callLog)
 	if err != nil {
 		callLog.Error("duplex stream ended with error", "error", err)
 		return

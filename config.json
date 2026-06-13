@@ -1,13 +1,28 @@
 {
   "api_base": "https://gateway.argon.zone",
-  "background_file": "background.opus",
   "ingress_url": "ws://rts.argon.gl:12880",
+  "background_file": "background.opus",
   "log_level": "debug",
   "token": "",
-  "variants": [
-    "girl_echo_00",
-    "girl_echo_01",
-    "girl_echo_02",
-    "girl_echo_03"
-  ]
+  "fallback_language": "en",
+  "voices_dir": "voices",
+  "voices": {
+    "ru": [
+      { "name": "girl_echo_00", "rarity": "rare" },
+      { "name": "girl_echo_01" },
+      { "name": "girl_echo_02", "rarity": "legendary" },
+      { "name": "girl_echo_03", "rarity": "rare" }
+    ],
+    "en": [
+      { "name": "girl_echo_00" },
+      { "name": "girl_echo_01", "rarity": "rare" },
+      { "name": "girl_echo_02", "rarity": "rare" },
+      { "name": "girl_echo_03" },
+      { "name": "girl_echo_04" },
+      { "name": "girl_echo_05", "rarity": "rare" },
+      { "name": "girl_echo_06", "rarity": "legendary" },
+      { "name": "girl_echo_07", "rarity": "legendary" },
+      { "name": "girl_echo_08" }
+    ]
+  }
 }

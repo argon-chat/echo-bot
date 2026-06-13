@@ -1,0 +1,18 @@
+{
+    "name": "girl_echo_06",
+    "codec": "opus",
+    "markers": {
+        "recording": {
+            "start": "0:17.500",
+            "end": "0:27.500"
+        },
+        "playback": {
+            "start": "0:32.000",
+            "end": "0:42.000"
+        },
+        "background": {
+            "start": "0:56.000",
+            "end": "auto"
+        }
+    }
+}
